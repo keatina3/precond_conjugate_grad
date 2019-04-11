@@ -4,7 +4,7 @@ CFLAGS = -g -Wall
 
 LDFLAGS =
 
-OBJECTS = main.o
+OBJECTS = main.o fdiff.o utils.o
 
 TARGET = cg_fd
 

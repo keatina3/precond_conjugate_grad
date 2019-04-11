@@ -1,90 +1,212 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <mpi.h>
 #include "utils.h"
 #include "fdiff.h"
 
-void laplace(Grid Lx, Grid x){
+void init_boundaries(Grid u, MPI_Topology top){
+    int i;
+    if(top.coords[0]==2)
+        for(i=0;i<u.dims[1];i++)
+            u.arr[u.dims[0]+1][i] = 1.0;
+}
+
+// DOES THIS NEED TO INCLUDE BOUNDARY CONDITIONS ?? //
+void laplace(Grid Lx, Grid x, MPI_Topology top){
     int i,j;
     
-    for(i=0;i<(x.n+1);i++){
-        for(j=0;j<(x.m+1);j++){
-            Lx[i][j] = -4*x[i][j] 
+    for(i=0;i<(x.dims[0]+1);i++){
+        for(j=0;j<(x.dims[1]+1);j++){
+            Lx.arr[i][j] = -4*x.arr[i][j]; 
             if(i>0)
-                Lx[i][j] += x[i-1][j] 
-            if(i<x.n)
-                Lx[i][j] += x[i+1][j] 
-            if(j>o)
-                Lx[i][j] += x[i][j-1] 
-            if(j<x.m)
-                Lx[i][j] += x[i][j+1];
+                Lx.arr[i][j] += x.arr[i-1][j]; 
+            if(i<x.dims[0])
+                Lx.arr[i][j] += x.arr[i+1][j];
+            if(j>0)
+                Lx.arr[i][j] += x.arr[i][j-1];
+            if(j<x.dims[1])
+                Lx.arr[i][j] += x.arr[i][j+1];
+            
+            if(i==1 && top.nbrleft == -2)
+                Lx.arr[i][j] -= x.arr[i+1][j]; 
+            if(i==x.dims[0] && top.nbrright == -2 && top.coords[1] < 3)
+                Lx.arr[i][j] -= x.arr[i-1][j]; 
+            if(i==1 && top.nbrdwn == -2 && top.coords[1] > 0)
+                Lx.arr[i][j] -= x.arr[i][j+1]; 
+            if(j==x.dims[1] && top.nbrup == -2)
+                Lx.arr[i][j] -= x.arr[i][j-1];
         }
     }
 }
 
 // need to incorporate uold //
-void residual(Grid r, u){
-    int i,j;
-    for(i=1;i<u.n;i++)
-        for(j=1;j<u.m;j++)
-            r[i][j] = 4*u[i][j] - u[i+1][j] - u[i][j+1] - r[i][j-1] - r[i-1][j]; 
-
-}
-
-void laplace_rb_GS(){
+// DOES THIS NEED NEUMANN BOUNDARY CONDITIONS ??? //
+void residual(Grid r, Grid u, MPI_Topology top){
     int i,j;
     
-    while(count<MAXITERS){
-        for(i=1;i<u.n;i++){
-            for(i=j;j<u.m;j++){
-                if((i+j)%2==0){
-                    u[i][j] = u[i][j] + 0.25*(-4*u[i][j] + u[i-1][j] + u[i+1][j] 
-                                    + u[i][j-1] + u[i][j+1];
-                }
-            }
+    for(i=1;i<u.dims[0];i++){
+        for(j=1;j<u.dims[1];j++){
+            r.arr[i][j] = 4*u.arr[i][j] - u.arr[i+1][j] - u.arr[i][j+1] 
+                    - u.arr[i][j-1] - u.arr[i-1][j];
+            
+            if(i==1 && top.nbrleft == -2)
+                r.arr[i][j] -= u.arr[i+1][j]; 
+            if(i==u.dims[0] && top.nbrright == -2 && top.coords[1] < 3)
+                r.arr[i][j] -= u.arr[i-1][j]; 
+            if(i==1 && top.nbrdwn == -2 && top.coords[1] > 0)
+                r.arr[i][j] -= u.arr[i][j+1]; 
+            if(j==u.dims[1] && top.nbrup == -2)
+                r.arr[i][j] -= u.arr[i][j-1];
         }
+    }
+}
 
-        exchange();
-        MPI_Barrier();
-        for(i=1;i<u.n;i++){
-            for(i=j;j<u.m;j++){
-                if((i+j)%2==1){
-                    u[i][j] = u[i][j] + 0.25*(-4*u[i][j] + u[i-1][j] + u[i+1][j] 
-                                    + u[i][j-1] + u[i][j+1];
-                }
-            }
+// FIXME
+// DOES THIS NEED NUEMANN BOUNDARY CONDITIONS ??? //
+void GS_solve(Grid x, Grid b, MPI_Topology top, int i, int j){
+    
+    x.arr[i][j] = 0.25*(x.arr[i-1][j] + x.arr[i+1][j] + x.arr[i][j+1]+
+                            x.arr[i][j-1] - b.arr[i][j]);
+    if(i==1 && top.nbrleft == -2)
+        x.arr[i][j] += 0.25*x.arr[i+1][j]; 
+    if(i==x.dims[0] && top.nbrright == -2 && top.coords[1] < 3)
+        x.arr[i][j] += 0.25*x.arr[i-1][j]; 
+    if(i==1 && top.nbrdwn == -2 && top.coords[1] > 0)
+        x.arr[i][j] += 0.25*x.arr[i][j+1]; 
+    if(j==x.dims[1] && top.nbrup == -2)
+        x.arr[i][j] += 0.25*x.arr[i][j-1];
+}    
+
+void laplace_rb_GS(Grid u, Grid b, MPI_Topology top){
+    int i,j;
+    int count = 0;
+    Grid r;
+    double glob_sum = 0, loc_sum;
+    
+    r = init_grid(u.dims[0], u.dims[1]);
+
+    MPI_Barrier(top.comm);
+    MPI_Datatype MPI_ROW, MPI_COL;
+    
+    MPI_Type_vector((u.dims[1]+2)/2, 1, 2, MPI_DOUBLE, &MPI_COL);
+    MPI_Type_vector((u.dims[0]+2)/2, 1, 2*u.dims[0], MPI_DOUBLE, &MPI_ROW);
+    MPI_Type_commit(&MPI_COL);
+    MPI_Type_commit(&MPI_ROW);
+    
+    while(count++<MAXITERS){
+        for(i=1;i<(u.dims[0]+1);i++)
+            for(j=1;j<(u.dims[1]+1);j++)
+                if((i+j)%2 == 0)
+                    GS_solve(u, b, top, i, j);
+
+        MPI_Barrier(top.comm);
+        exchange(u, 1, top, MPI_ROW, MPI_COL);
+    
+        MPI_Barrier(top.comm);
+
+        for(i=1;i<(u.dims[0]+1);i++)
+            for(j=1;j<(u.dims[1]+1);j++)
+                if( (i+j)%2 == 1)
+                    GS_solve(u, b, top, i, j);
+
+        exchange(u, 0, top, MPI_ROW, MPI_COL);
+
+        // NEED TO SORT OUT CONVERGENCE //
+        residual(r,u,top);
+        loc_sum = grid_diff(r);
+        MPI_Allreduce(&loc_sum, &glob_sum, 1, MPI_DOUBLE, MPI_SUM, top.comm); 
+        if(glob_sum<ERR){
+            free_grid(&r);
+            return;
         }
-        exchange();
-        MPI_Barrier();
+    }
+    free_grid(&r);
+    if(top.coords[0]==0 && top.coords[1]==0)
+        printf("Max iterations reached in G-S.\n");
+}    
+
+void exchange(Grid u, int odd, MPI_Topology top, MPI_Datatype MPI_ROW, MPI_Datatype MPI_COL){
         
-        if(GLOB CONVERGE)
-            break;
-    }
+    MPI_Sendrecv(&u.arr[u.dims[0]-1][odd], 1, MPI_ROW, top.nbrright, 0, 
+                 &u.arr[0][odd], 1, MPI_ROW, top.nbrleft, 0, top.comm, MPI_STATUS_IGNORE);
+    
+    MPI_Sendrecv(&u.arr[1][odd], 1, MPI_ROW, top.nbrleft, 0, 
+                 &u.arr[u.dims[0]][odd], 1, MPI_ROW, top.nbrright,0,top.comm, MPI_STATUS_IGNORE);
+    
+    MPI_Sendrecv(&u.arr[odd][u.dims[1]-1], 1, MPI_COL, top.nbrup, 0, 
+                 &u.arr[odd][0], 1, MPI_COL, top.nbrdwn, 0, top.comm, MPI_STATUS_IGNORE);
+    
+    MPI_Sendrecv(&u.arr[odd][1], 1, MPI_COL, top.nbrdwn, 0, 
+                 &u.arr[odd][u.dims[1]], 1, MPI_COL, top.nbrup, 0, top.comm, MPI_STATUS_IGNORE);
 }
 
-void precond_CG(Grid u){
-    Grid rnew, rold, znew, zold, p, Ap;
+void precond_CG(Grid u, MPI_Topology top){
+    Grid_ptr rnew, rold, znew, zold, tmp_ptr; 
+    Grid tmp, p, Ap;
     double alpha, beta;
-    int nx = u.nx, ny = u.ny;
-
-    rnew    = init_grid(nx, ny);
-    rold    = init_grid(nx, ny);
-    znew    = init_grid(nx, ny);
-    rold    = init_grid(nx, ny);
-    p       = init_grid(nx, ny);
-    Ap      = init_grid(nx, ny);    
+    double loc_sum, glob_sum;
+    int count=0;
+    int nx = u.dims[0], ny = u.dims[1];
     
-    residual(rold, u);
-    laplace_rb_GS(z, r)
-    memcpy(p.vals, z.vals, (nx+2)*(ny+2)*sizeof(double));
-    while(count < MAXITERS){
-        laplace(Ap, p);         // need to fix for boundary vals //
-        alpha = frob_inner_prod(rold, zold) / frob_inner_prod(Ap, p);
-        x = vec_vec_add(x, vec_scal_prod(p_vals, alpha));
-        rnew = vec_vec_add(rold, vec_scal_prod(Ap, -alpha));
-        if(grid_diff(rnew) < ERR)
-            break;
-        laplace_rb_gs(znew, rnew);
-        beta = frob_inner_prod(rnew, znew) / frob_inner_prod(rold, zold);
-        p = vec_vec_add(znew, vec_scal_prod(p, beta));
+    rnew = (Grid_ptr)malloc(sizeof(Grid));
+    rold = (Grid_ptr)malloc(sizeof(Grid));
+    znew = (Grid_ptr)malloc(sizeof(Grid));
+    zold = (Grid_ptr)malloc(sizeof(Grid));
+
+    *rnew   = init_grid(nx, ny);
+    *rold   = init_grid(nx, ny);
+    *znew   = init_grid(nx, ny);
+    *zold   = init_grid(nx, ny);
+    tmp     = init_grid(nx, ny);
+    p       = init_grid(nx, ny);
+    Ap      = init_grid(nx, ny);   
+    
+    residual(*rold, u, top);
+    laplace_rb_GS(*zold, *rold, top);
+    memcpy(p.vals, zold->vals, (nx+2)*(ny+2)*sizeof(double));
+    if(top.coords[0]==0 && top.coords[1]==0)
+        printf("arr = %f\n",u.arr[3][3]);
+
+    while(count++ < MAXITERS){
+        laplace(Ap, p, top);
+        alpha = frob_inner_prod(*rold, *zold) / frob_inner_prod(Ap, p);
+
+        vec_scal_prod(tmp, p, alpha);
+        vec_vec_add(u, u, tmp);
+        
+        vec_scal_prod(tmp, Ap, -alpha);
+        vec_vec_add(*rnew, *rold, tmp);
+        
+        loc_sum = grid_diff(*rnew);
+        MPI_Allreduce(&loc_sum, &glob_sum, 1, MPI_DOUBLE, MPI_SUM, top.comm); 
+        if(glob_sum<ERR){
+            free_grid(rnew); free_grid(rold); free_grid(znew); free_grid(zold);
+            free(rold); free(rnew); free(zold); free(znew);
+            free_grid(&Ap); free_grid(&p); free_grid(&tmp);
+            return;
+        }
+        
+        laplace_rb_GS(*znew, *rnew, top);
+        if(top.coords[0]==0 && top.coords[1]==0)
+            printf("count=%d\n",count);
+        beta = frob_inner_prod(*rnew, *znew) / frob_inner_prod(*rold, *zold);
+        vec_scal_prod(tmp, p, beta);
+        vec_vec_add(p, *znew, tmp);
+
+        tmp_ptr = rnew;
+        rnew = rold;
+        rold = tmp_ptr;
+
+        tmp_ptr = znew;
+        znew = zold;
+        zold = tmp_ptr;
     }
+    
+    if(top.coords[0]==0 && top.coords[1]==0)
+        printf("Max iterations reached in C-G.\n");
+    
+    free_grid(rnew); free_grid(rold); free_grid(znew); free_grid(zold);
+    free(rold); free(rnew); free(zold); free(znew);
+    free_grid(&Ap); free_grid(&p); free_grid(&tmp);
 }

@@ -1,39 +1,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
-#include "fdiff.h"
 #include "utils.h"
+#include "fdiff.h"
 
-#define GRID_SIZE_X 12
-#define GRID_SIZE_Y 9
-#define ERR 1.0E-07
+#define GRID_SIZE_X 9
+#define GRID_SIZE_Y 12
 
 int main(int argc, char** argv){
     int myid, nprocs;
-    int n,m;
     int nx, ny;
-    double **grid, *grid_vals;
-    int count;
-    MPI_Datatype column;
+    Grid u;
+    MPI_Topology top;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     
-    /*
-    int dims[2] = {4,3};
-    int periods[2] = {0,0};
+    if(nprocs!=8){
+        if(myid==0)
+            printf("Only functons for 8 processors.\n");
+        MPI_Finalize();
+        return 1;
+    }
 
-    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, &cart_comm);
-    */
+    nx = GRID_SIZE_X;
+    ny = GRID_SIZE_Y;
     
-    n = 3, m = 4;
-    nx = GRID_SIZE_X+2;
-    ny = GRID_SIZE_Y+2;
+    top = init_top(nprocs, myid, MPI_COMM_WORLD);
+    
+    /*
+    printf("myid = %d, nbrdwn = %d, nbrup = %d, nbrleft = %d, nbrright = %d, coords = (%d,%d)\n",   
+            myid, top.nbrdwn, top.nbrup, top.nbrleft, top.nbrright, top.coords[0], top.coords[1]);
+    */
+    u = init_grid(nx, ny);
+    
+    //printf("test\n");
 
-    //init_grid(grid, grid_vals, nx, ny);
-    //init_boundaries();
-
+    init_boundaries(u, top);
+    
+    precond_CG(u, top);
+     
+    free_grid(&u);
 
     MPI_Finalize();
     
