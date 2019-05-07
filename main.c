@@ -5,7 +5,7 @@
 #include "fdiff.h"
 
 #define GRID_SIZE_X 9
-#define GRID_SIZE_Y 12
+#define GRID_SIZE_Y 20
 
 int main(int argc, char** argv){
     int myid, nprocs;
@@ -33,13 +33,23 @@ int main(int argc, char** argv){
     printf("myid = %d, nbrdwn = %d, nbrup = %d, nbrleft = %d, nbrright = %d, coords = (%d,%d)\n",   
             myid, top.nbrdwn, top.nbrup, top.nbrleft, top.nbrright, top.coords[0], top.coords[1]);
     */
-    u = init_grid(nx, ny);
+    u = init_grid(nx/3, ny/4);
     
     //printf("test\n");
 
     init_boundaries(u, top);
     
+    if(myid==0)
+        printf("\nINITIALISED GRID\n\n");    
+    MPI_Barrier(MPI_COMM_WORLD);
+    print_grid(u, top);   
+    
     precond_CG(u, top);
+    if(myid==0)
+        printf("\nSOLVED GRID\n\n");    
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    print_grid(u, top);   
      
     free_grid(&u);
 

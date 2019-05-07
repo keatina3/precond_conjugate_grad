@@ -23,5 +23,7 @@ double grid_diff(Grid x);
 double frob_inner_prod(Grid x, Grid y);
 void vec_scal_prod(Grid ax, Grid x, double a);
 void vec_vec_add(Grid x_y, Grid x, Grid y);
+void print_grid(Grid x, MPI_Topology top);
+void print_col(Grid x, int col, int yproc, int xprocs, MPI_Topology top);
 
 #endif

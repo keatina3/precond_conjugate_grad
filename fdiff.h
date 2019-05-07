@@ -1,7 +1,7 @@
 #ifndef _FDIFF_H_
 #define _FDIFF_H_
 
-#define MAXITERS 1000
+#define MAXITERS 100
 #define ERR 1.0E-07
 
 void init_boundaries(Grid u, MPI_Topology top);

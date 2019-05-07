@@ -1,5 +1,7 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <unistd.h>
 #include "utils.h"
 
 MPI_Topology init_top(int nprocs, int myid, MPI_Comm comm){
@@ -85,11 +87,11 @@ void free_grid(Grid_ptr x){
 }
 
 double grid_diff(Grid x){
-    double sum = 0;
+    double sum = 0.0;
     int i,j;
 
-    for(i=0;i<x.dims[0];i++)
-        for(j=0;j<x.dims[1];j++)
+    for(i=1;i<=x.dims[0];i++)
+        for(j=1;j<=x.dims[1];j++)
             sum += x.arr[i][j]*x.arr[i][j];
 
     return sum;
@@ -97,10 +99,10 @@ double grid_diff(Grid x){
 
 double frob_inner_prod(Grid x, Grid y){
     int i,j;
-    double sum = 0;
+    double sum = 0.0;
 
-    for(i=1;i<x.dims[0]-1;i++)
-        for(j=1;j<x.dims[1]-1;j++)
+    for(i=1;i<=x.dims[0];i++)
+        for(j=1;j<=x.dims[1];j++)
             sum += x.arr[i][j]*y.arr[i][j];
     return sum;
 }
@@ -108,15 +110,80 @@ double frob_inner_prod(Grid x, Grid y){
 void vec_scal_prod(Grid ax, Grid x, double a){
     int i,j;
 
-    for(i=1;i<x.dims[0]-1;i++)
-        for(j=1;j<x.dims[1]-1;j++)
+    for(i=1;i<=x.dims[0];i++)
+        for(j=1;j<=x.dims[1];j++)
             ax.arr[i][j] = a*x.arr[i][j];
 }
 
 void vec_vec_add(Grid x_y, Grid x, Grid y){
     int i,j;
 
-    for(i=1;i<x.dims[0]-1;i++)
-        for(j=1;j<x.dims[1]-1;j++)
+    for(i=1;i<=x.dims[0];i++)
+        for(j=1;j<=x.dims[1];j++)
             x_y.arr[i][j] = x.arr[i][j] + y.arr[i][j];
+}
+
+void print_grid(Grid x, MPI_Topology top){
+    int i,j;
+
+    for(i=0;i<3;i++){
+        if(top.coords[0]==i && top.coords[1]==3){
+            if(i==0)
+                printf("%lf ", x.arr[0][x.dims[1]+1]);
+            for(j=1;j<=x.dims[0];j++)
+                printf("%lf ", x.arr[j][x.dims[1]+1]);
+            if(i==2)
+                printf("%lf\n", x.arr[x.dims[0]+1][x.dims[1]+1]);
+        }
+        fflush(stdout);
+        usleep(1000);
+        MPI_Barrier(top.comm);
+    }
+    
+    for(j=x.dims[1];j>0;j--){
+        print_col(x, j, 3, 3, top);
+        MPI_Barrier(top.comm); 
+    }
+    for(j=x.dims[1];j>0;j--){
+        print_col(x, j, 2, 1, top); 
+        MPI_Barrier(top.comm); 
+    }
+    for(i=1;i>=0;i--){
+        for(j=x.dims[1];j>0;j--){
+            print_col(x, j, i, 2, top);
+            MPI_Barrier(top.comm); 
+        }
+    }
+
+    for(i=0;i<2;i++){
+        if(top.coords[0]==i && top.coords[1]==0){
+            if(i==0)
+                printf("%lf ", x.arr[0][0]);
+            for(j=1;j<=x.dims[0];j++)
+                printf("%lf ", x.arr[j][0]);
+            if(i==1)
+                printf("%lf\n", x.arr[x.dims[0]+1][0]);
+        }
+        fflush(stdout);
+        usleep(1000);
+        MPI_Barrier(top.comm);
+    }
+}
+
+void print_col(Grid x, int col, int yproc, int xprocs, MPI_Topology top){
+    int i,j;
+
+    for(i=0;i<xprocs;i++){
+        if(top.coords[0]==i && top.coords[1]==yproc){
+            if(i==0)
+                printf("%lf ", x.arr[0][col]);
+            for(j=1;j<=x.dims[0];j++)
+                printf("%lf ", x.arr[j][col]);
+            if(i==(xprocs-1))
+                printf("%lf\n", x.arr[x.dims[0]+1][col]);
+        }
+        fflush(stdout);
+        usleep(1000);
+        MPI_Barrier(top.comm);
+    }
 }
