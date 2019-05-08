@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "utils.h"
 
+// initialises custom topology for 8 procs in shape of grid //
 MPI_Topology init_top(int nprocs, int myid, MPI_Comm comm){
     MPI_Topology top;
     int i,j;
@@ -51,6 +52,7 @@ MPI_Topology init_top(int nprocs, int myid, MPI_Comm comm){
     return top;
 }
 
+// decomposes length n array in size near equal parts //
 int decomp1d(int n, int size, int rank, int *s, int *e){
     int nlocal, deficit;
 
@@ -65,6 +67,7 @@ int decomp1d(int n, int size, int rank, int *s, int *e){
     return 0;
 }
 
+// intialises grid structure //
 Grid init_grid(int n, int m){
     int i;
     Grid x;
@@ -97,6 +100,7 @@ double grid_diff(Grid x){
     return sum;
 }
 
+// inner product //
 double frob_inner_prod(Grid x, Grid y){
     int i,j;
     double sum = 0.0;
@@ -107,6 +111,7 @@ double frob_inner_prod(Grid x, Grid y){
     return sum;
 }
 
+// vector scalar product //
 void vec_scal_prod(Grid ax, Grid x, double a){
     int i,j;
 
@@ -115,6 +120,7 @@ void vec_scal_prod(Grid ax, Grid x, double a){
             ax.arr[i][j] = a*x.arr[i][j];
 }
 
+// vector vector addition //
 void vec_vec_add(Grid x_y, Grid x, Grid y){
     int i,j;
 
@@ -144,10 +150,52 @@ void print_grid(Grid x, MPI_Topology top){
         print_col(x, j, 3, 3, top);
         MPI_Barrier(top.comm); 
     }
-    for(j=x.dims[1];j>0;j--){
+    
+    if(top.coords[0]==0 && top.coords[1]==2){
+        for(j=0;j<=x.dims[0]+1;j++)
+            printf("%lf ", x.arr[j][x.dims[1]]);
+    }
+    fflush(stdout);
+    usleep(1000);
+    MPI_Barrier(top.comm);
+
+    for(i=1;i<3;i++){
+        if(top.coords[0]==i && top.coords[1]==3){
+            if(i==2)
+                printf("%lf ", x.arr[1][x.dims[1]+1]);
+            for(j=2;j<=x.dims[0];j++)
+                printf("%lf ", x.arr[j][x.dims[1]+1]);
+            if(i==2)
+                printf("%lf\n", x.arr[x.dims[0]+1][x.dims[1]+1]);
+        }
+        fflush(stdout);
+        usleep(1000);
+        MPI_Barrier(top.comm);
+    }
+    
+    
+    for(j=x.dims[1]-1;j>1;j--){
         print_col(x, j, 2, 1, top); 
         MPI_Barrier(top.comm); 
     }
+    
+    if(top.coords[0]==0 && top.coords[1]==2){
+        for(j=0;j<=x.dims[0]+1;j++)
+            printf("%lf ", x.arr[j][1]);
+    }
+    fflush(stdout);
+    usleep(1000);
+    MPI_Barrier(top.comm);
+    
+    if(top.coords[0]==1 && top.coords[1]==3){
+        for(j=1;j<=x.dims[0];j++)
+            printf("%lf ", x.arr[j][x.dims[1]+1]);
+        printf("\n");
+    }
+    fflush(stdout);
+    usleep(1000);
+    MPI_Barrier(top.comm);
+
     for(i=1;i>=0;i--){
         for(j=x.dims[1];j>0;j--){
             print_col(x, j, i, 2, top);
